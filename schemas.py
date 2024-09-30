@@ -1,14 +1,25 @@
 from datetime import datetime
 from pydantic import BaseModel
-from dbservice import EmployeeRole
+
+class StatusRequest(BaseModel):
+    name:str
+
+class StatusResponse(StatusRequest):
+    id:int
 
 class BranchRequest(BaseModel):
     branch_name:str
     branch_location:str
+    status_id:int
 
 class BranchResponse(BranchRequest):
     id:int
 
+class RoleRequest(BaseModel):
+    roleName=str
+
+class RoleResponse(RoleRequest):
+    id:int
 
 class EmployeeCreate(BaseModel):
     employee_name:str
@@ -16,7 +27,8 @@ class EmployeeCreate(BaseModel):
     national_id :str
     password: str
     branch_id : int
-    role: EmployeeRole
+    role_id: int
+    status_id:int
 
 class EmployeeResponse(EmployeeCreate):
     id:int

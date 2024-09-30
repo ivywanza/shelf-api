@@ -12,10 +12,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-class EmployeeRole(enum.Enum):
-    MANAGER = 'manager'
-    CUSTOMER_SERVICE = 'customer_service'
-
 
 class Status(Base):
     __tablename__="status"
