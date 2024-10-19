@@ -1,15 +1,20 @@
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
 from passlib.context import CryptContext
 from typing import Annotated, Union
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials
-from dbservice import *
+from app.dbservice import *
 
 SECRET_KEY = "secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+RESET_TOKEN_EXPIRE_MINUTES = 15
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -75,3 +80,41 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
+
+## creating the reset token using jwt
+def create_reset_token(email: str):
+    expire = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"sub": email, "exp": expire}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+# verifying reset token
+def verify_reset_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise JWTError()
+        return email
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    
+def send_reset_email(email: str, reset_token: str):
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    smtp_user = "ivymaundu03@gmail.com"
+    smtp_password = "houi jjkd wsdx vgjd"
+
+    msg = MIMEMultipart()
+    msg['From'] = smtp_user
+    msg['To'] = email
+    msg['Subject'] = "Password Reset Request"
+
+
+    reset_link = f"http://localhost:8000/reset_password/{reset_token}"
+    body = f"Click the link to reset your password: {reset_link}"
+    msg.attach(MIMEText(body, 'plain'))
+
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)

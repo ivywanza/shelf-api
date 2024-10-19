@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel
 
 class StatusRequest(BaseModel):
     name:str
+
 
 class StatusResponse(StatusRequest):
     id:int
@@ -16,7 +18,7 @@ class BranchResponse(BranchRequest):
     id:int
 
 class RoleRequest(BaseModel):
-    roleName=str
+    roleName:str
 
 class RoleResponse(RoleRequest):
     id:int
@@ -24,7 +26,7 @@ class RoleResponse(RoleRequest):
 class EmployeeCreate(BaseModel):
     employee_name:str
     employee_email:str
-    national_id :str
+    national_id_number :str
     password: str
     branch_id : int
     role_id: int
@@ -35,12 +37,21 @@ class EmployeeResponse(EmployeeCreate):
     
     class Config:
         orm_mode = True
-        
+
+class EmployeeUpdate(BaseModel):
+    employee_name:  Optional[str] = None
+    employee_email: Optional[str] = None
+    role_id: Optional[int] = None
+    status_id:Optional[int] = None
+
 
 class LoginRequest(BaseModel):
     email:str
     password:str
 
+class PasswordResetRequest(BaseModel):
+    email:str
+    token:str
 
 class ShelfTypeRequest(BaseModel):
     size :str

@@ -1,12 +1,16 @@
-from fastapi import FastAPI, HTTPException , status
-from dbservice import *
-from schemas import *
+from fastapi import FastAPI, HTTPException , status, Request, Form
+from app.dbservice import *
+from app.schemas import *
 from fastapi.middleware.cors import CORSMiddleware 
-from security import *
+from app.security import *
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 
 
 app = FastAPI()
 db = SessionLocal()
+templates = Jinja2Templates(directory="templates")
+
 
 origins = [
     "http://localhost",
@@ -30,7 +34,8 @@ def create_branch(branch: BranchRequest):
         try:
             new_branch=Branch(
                 branch_name = branch.branch_name,
-                branch_location = branch.branch_location
+                branch_location = branch.branch_location,
+                status_id=branch.status_id
             )
             db.add(new_branch)
             db.commit()
@@ -54,6 +59,45 @@ def get_branches():
 
     return branches
 
+# status create
+@app.post('/add-status')
+def add_status(status:StatusRequest):
+    try:
+        existing_status=db.query(Status).filter(Status.name==status.name).first()
+        
+        if existing_status:
+            raise HTTPException(status_code=409, detail="status already exists")
+        
+        register_status=Status(
+            name=status.name
+        )
+        db.add(register_status)
+        db.commit()
+        db.refresh(register_status)
+        return {"message":"status registered successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"error adding status: {str(e)}")
+    
+@app.get('/status', response_model=list[StatusResponse])
+def get_status():
+    try:
+        status=db.query(Status).all()
+
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"failed to fetch resources: {str(e)}")
+    
+@app.delete('/del-status/{status_id}')
+def del_status(status_id:int):
+    try:
+        status=db.query(Status).filter(Status.id==status_id).first()
+
+        db.delete(status)
+        db.commit()
+        return {'message':'status deleted successfully'}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"failed !: {str(e)}")
+
 @app.post('/user_login')
 def login_user(login_details: LoginRequest):
 
@@ -70,10 +114,11 @@ def login_user(login_details: LoginRequest):
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+# register employee details
 @app.post('/employee')
 def add_employee(employee: EmployeeCreate):
     password = pwd_context.hash(employee.password)
-    existing_employee = db.query(Employee).filter(Employee.national_id_number==employee.national_id).first()
+    existing_employee = db.query(Employee).filter(Employee.national_id_number==employee.national_id_number).first()
 
     if not existing_employee:
         try:
@@ -81,10 +126,11 @@ def add_employee(employee: EmployeeCreate):
             new_employee = Employee(
                 employee_name=employee.employee_name,
                 employee_email = employee.employee_email,
-                national_id_number = employee.national_id,
+                national_id_number = employee.national_id_number,
                 branch_id = employee.branch_id,
                 password = password,
-                role = employee.role
+                role_id = employee.role_id,
+                status_id=employee.status_id
             )
             db.add(new_employee)
             db.commit()
@@ -99,18 +145,113 @@ def add_employee(employee: EmployeeCreate):
     else:
         return {'detail' : 'employee is already registered'}
     
+# get all registered employee
 @app.get('/employees', response_model=list[EmployeeResponse])
 def get_employees():
     existing_employees = db.query(Employee).all()
      
     return existing_employees
 
+# get employee details
 @app.get('/employees/{employee_id}', response_model=list[EmployeeResponse])
 def get_employee_details(employee_id:int):
 
-    existing_employees = db.query(Employee).filter(Employee.id==employee_id).first()
+    existing_employees = db.query(Employee).filter(Employee.id==employee_id).all()
     
     return existing_employees
+
+# update employee details
+@app.put('/employee/{employee_id}')
+def update_employee_details(employee_id:int, request:EmployeeUpdate):
+    try:
+        employee=db.query(Employee).filter(Employee.id==employee_id).first()
+
+        if not employee:
+            raise HTTPException(status_code=409, detail="Employee does not exist")
+       
+        if request.employee_name:
+            employee.employee_name=request.employee_name
+
+        if request.employee_email:
+            employee.employee_email==request.employee_email
+
+        if request.status_id:
+            employee.status_id=request.status_id
+
+        if request.role_id:
+            employee.role_id==request.role_id
+
+        db.commit()
+
+        return {'message':'details updated successfully!'}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"error updating details:{str(e)}")
+    
+# @app.delete('/delete_emloyee/{employee_id}')
+# def delete_employee(employee_id:int):
+#     try:
+#         employee=db.query(Employee).filter(Employee.id==employee_id).first()
+
+#         db.delete(employee)
+#         db.commit()
+#         return {'message':'employee details deleted successfully'}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"failed !: {str(e)}")
+
+
+# reset password
+
+@app.post("/password-reset-request/")
+async def password_reset_request(request: PasswordResetRequest):
+    
+    user = db.query(Employee).filter(Employee.employee_email == request.email).first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    token = create_reset_token(user.employee_email)
+
+    send_reset_email(user.employee_email, token)
+    return {"msg": "Password reset email has been sent. Link will expire in 15 minutes!"}
+
+@app.get("/reset_password/{token}", response_class=HTMLResponse)
+async def get_reset_password_form(request: Request, token: str):
+    return templates.TemplateResponse("reset_password.html", {"request": request, "token": token})
+
+@app.post("/reset-password/")
+async def reset_password( 
+    token: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...) 
+    
+    ):
+
+    # Verify the token and get the email
+    email = verify_reset_token(token)
+    
+    # confirm password match
+    if new_password != confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    # Query the Employee table
+    user = db.query(Employee).filter(Employee.employee_email == email).first()
+    
+    # If the user is not found in either table, raise a 404 error
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    # Hash the new password
+    hashed_password = get_password_hash(new_password)
+
+    # Update the password based on user type
+    user.password = hashed_password
+
+    db.commit()
+
+    # Commit the changes to the database
+    db.commit()
+    
+    return {"msg": "Password reset successful."}
 
 @app.post('/shelf')
 def add_shelf(shelf: ShelfRequest):

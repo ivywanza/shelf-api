@@ -1,4 +1,4 @@
-from sqlalchemy import Enum, create_engine, Column,Integer,String,ForeignKey,Float,DateTime,MetaData
+from sqlalchemy import Enum, create_engine, Column,Integer,String,ForeignKey,Float,DateTime,MetaData,Boolean
 from sqlalchemy.orm import sessionmaker,relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -11,6 +11,32 @@ engine= create_engine(SQLALCHEMY_DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+class Company(Base):
+    __tablename__="companies"
+
+    id=Column(Integer,primary_key=True,autoincrement=True)
+    company_name=Column(String, nullable=False)
+    company_email=Column(String(80), nullable=False, unique=True)
+    phone_number=Column(String(20),nullable=False, unique=True)
+    company_password=Column(String, nullable=False)
+    company_location=Column(String, nullable=True)
+    registration_date=Column(DateTime, default=datetime.utcnow)
+    role_id =  Column(Integer, ForeignKey('companies.id'))
+
+
+    # role=Column(Enum(UserRole),default=UserRole.SUPERIORADMIN)
+    is_active=Column(Boolean, default=True)
+
+    # relationships
+    employee = relationship('Employee', backref="company_employees")
+    customer = relationship('Customer', backref='company_customers')
+    role = relationship("Role", backref='companies')
+    branch = relationship('Branch', backref='company_branches')
+    product = relationship('Product', backref='company_products')
+    payment_method = relationship('CustomerToCompanyPaymentMethod', backref='company_customer_payment')
+    sales = relationship('Sale', backref='company_sale')
+    payments = relationship('Payment', backref='company_payments')
 
 
 class Status(Base):
